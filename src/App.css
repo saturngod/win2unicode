@@ -1,0 +1,187 @@
+:root {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Palatino", "Book Antiqua", serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #101216;
+  background-color: #f2efe9;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 48px clamp(24px, 6vw, 72px) 64px;
+  background: radial-gradient(circle at top, #ffffff 0%, #f2efe9 48%, #e3e0d9 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  font-size: 0.72rem;
+  color: #6a6f78;
+  margin: 0 0 12px;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  margin: 0 0 12px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin: 0;
+  max-width: 480px;
+  color: #3c4048;
+  font-size: 1.05rem;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 20px 50px rgba(17, 19, 23, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 700px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+}
+
+.field span {
+  font-size: 0.95rem;
+  color: #4c515c;
+  font-weight: 600;
+}
+
+input {
+  border-radius: 12px;
+  border: 1px solid #d5d1c7;
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+  background: #fbfaf7;
+  color: #1b1e24;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus {
+  outline: none;
+  border-color: #c2693d;
+  box-shadow: 0 0 0 3px rgba(194, 105, 61, 0.15);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.file-name {
+  padding: 12px 14px;
+  background: #f6f1e8;
+  border-radius: 12px;
+  color: #2c2f36;
+  flex: 1 1 280px;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a7f88;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+}
+
+button {
+  border-radius: 999px;
+  border: none;
+  padding: 12px 22px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #c2693d, #8b3f2b);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  box-shadow: 0 12px 24px rgba(139, 63, 43, 0.25);
+}
+
+button.secondary {
+  background: #1b1e24;
+  box-shadow: none;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #1b1e24;
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 36px 20px 48px;
+  }
+
+  .panel {
+    padding: 22px;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  button {
+    width: 100%;
+  }
+}
