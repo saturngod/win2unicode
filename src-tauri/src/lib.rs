@@ -629,20 +629,137 @@ fn collect_shared_string_indices(
 }
 
 fn process_pptx_slide(contents: &[u8], source_font: &str) -> Vec<u8> {
-    let xml = String::from_utf8_lossy(contents).to_string();
-    let xml = replace_font(&xml, source_font, "typeface=\"", "\"");
-    let converted = win_to_myanmar3(&xml);
-    converted.into_bytes()
+    use quick_xml::events::{BytesStart, BytesText, Event};
+    use quick_xml::{Reader, Writer};
+
+    let mut reader = Reader::from_reader(contents);
+    reader.trim_text(false);
+    let mut writer = Writer::new(Vec::with_capacity(contents.len()));
+
+    let mut buf = Vec::new();
+    let mut in_run = false;
+    let mut run_has_font = false;
+
+    fn tag_matches(name: &[u8], local: &[u8]) -> bool {
+        if name == local {
+            return true;
+        }
+        if name.ends_with(local) {
+            let idx = name.len() - local.len();
+            return idx > 0 && name[idx - 1] == b':';
+        }
+        false
+    }
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let elem = e.into_owned();
+                let name = elem.name().as_ref().to_vec();
+
+                if tag_matches(&name, b"r") {
+                    in_run = true;
+                    run_has_font = false;
+                }
+
+                if tag_matches(&name, b"rPr") && in_run {
+                    let tag = String::from_utf8_lossy(&name).to_string();
+                    let mut new_elem = BytesStart::new(tag.as_str());
+                    for attr in elem.attributes().flatten() {
+                        let key = attr.key.as_ref();
+                        let value = attr.unescape_value().unwrap_or_default().to_string();
+                        let is_typeface = key == b"typeface" || key.ends_with(b":typeface");
+                        if is_typeface && value == source_font {
+                            run_has_font = true;
+                            new_elem.push_attribute((key, TARGET_FONT.as_bytes()));
+                        } else {
+                            new_elem.push_attribute((key, value.as_bytes()));
+                        }
+                    }
+                    writer.write_event(Event::Start(new_elem)).ok();
+                } else if tag_matches(&name, b"latin") && in_run {
+                    let tag = String::from_utf8_lossy(&name).to_string();
+                    let mut new_elem = BytesStart::new(tag.as_str());
+                    for attr in elem.attributes().flatten() {
+                        let key = attr.key.as_ref();
+                        let value = attr.unescape_value().unwrap_or_default().to_string();
+                        let is_typeface = key == b"typeface" || key.ends_with(b":typeface");
+                        if is_typeface && value == source_font {
+                            run_has_font = true;
+                            new_elem.push_attribute((key, TARGET_FONT.as_bytes()));
+                        } else {
+                            new_elem.push_attribute((key, value.as_bytes()));
+                        }
+                    }
+                    writer.write_event(Event::Start(new_elem)).ok();
+                } else {
+                    writer.write_event(Event::Start(elem)).ok();
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let elem = e.into_owned();
+                let name = elem.name().as_ref().to_vec();
+
+                if (tag_matches(&name, b"rPr") || tag_matches(&name, b"latin")) && in_run {
+                    let tag = String::from_utf8_lossy(&name).to_string();
+                    let mut new_elem = BytesStart::new(tag.as_str());
+                    for attr in elem.attributes().flatten() {
+                        let key = attr.key.as_ref();
+                        let value = attr.unescape_value().unwrap_or_default().to_string();
+                        let is_typeface = key == b"typeface" || key.ends_with(b":typeface");
+                        if is_typeface && value == source_font {
+                            run_has_font = true;
+                            new_elem.push_attribute((key, TARGET_FONT.as_bytes()));
+                        } else {
+                            new_elem.push_attribute((key, value.as_bytes()));
+                        }
+                    }
+                    writer.write_event(Event::Empty(new_elem)).ok();
+                } else {
+                    writer.write_event(Event::Empty(elem)).ok();
+                }
+            }
+            Ok(Event::Text(e)) => {
+                if in_run && run_has_font {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    let converted = win_to_myanmar3(&text);
+                    let new_text = BytesText::new(&converted);
+                    writer.write_event(Event::Text(new_text)).ok();
+                } else {
+                    writer.write_event(Event::Text(e.into_owned())).ok();
+                }
+            }
+            Ok(Event::End(e)) => {
+                if tag_matches(e.name().as_ref(), b"r") {
+                    in_run = false;
+                    run_has_font = false;
+                }
+                writer.write_event(Event::End(e.into_owned())).ok();
+            }
+            Ok(Event::CData(e)) => {
+                writer.write_event(Event::CData(e.into_owned())).ok();
+            }
+            Ok(Event::Decl(e)) => {
+                writer.write_event(Event::Decl(e.into_owned())).ok();
+            }
+            Ok(Event::PI(e)) => {
+                writer.write_event(Event::PI(e.into_owned())).ok();
+            }
+            Ok(Event::Comment(e)) => {
+                writer.write_event(Event::Comment(e.into_owned())).ok();
+            }
+            Ok(Event::DocType(e)) => {
+                writer.write_event(Event::DocType(e.into_owned())).ok();
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+        }
+        buf.clear();
+    }
+
+    writer.into_inner()
 }
 
-fn replace_font(xml: &str, source_font: &str, prefix: &str, suffix: &str) -> String {
-    if source_font.trim().is_empty() {
-        return xml.to_string();
-    }
-    let needle = format!("{}{}{}", prefix, source_font, suffix);
-    let replacement = format!("{}{}{}", prefix, TARGET_FONT, suffix);
-    xml.replace(&needle, &replacement)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
