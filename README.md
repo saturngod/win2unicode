@@ -1,7 +1,11 @@
-# Tauri + React + Typescript
+# Win 2 Unicode For MS Office
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
 
-## Recommended IDE Setup
+## Run
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+bun run tauri dev 
+
+
+## Screenshot
+
+![](./assets/screenshot.png)
