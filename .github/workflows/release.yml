@@ -36,4 +36,4 @@ jobs:
           releaseName: "v__VERSION__"
           releaseDraft: false
           prerelease: false
-          args: "--bundle msi"
+          args: "--bundles msi"
