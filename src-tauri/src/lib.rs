@@ -5,11 +5,45 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::collections::HashSet;
 use win_to_myanmar3::win_to_myanmar3;
+use tauri::{AppHandle, Emitter};
+use serde::Serialize;
 
 const TARGET_FONT: &str = "Myanmar Text";
 
+#[derive(Clone, Serialize)]
+struct ProgressEvent {
+    current: usize,
+    total: usize,
+    percentage: f64,
+    message: String,
+}
+
+fn emit_progress(handle: &AppHandle, current: usize, total: usize, message: &str) {
+    let percentage = if total > 0 {
+        (current as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let event = ProgressEvent {
+        current,
+        total,
+        percentage,
+        message: message.to_string(),
+    };
+    log::debug!("Progress: {}/{} ({:.1}%) - {}", current, total, percentage, message);
+
+    if let Err(e) = handle.emit("conversion-progress", event) {
+        log::error!("Failed to emit progress: {}", e);
+    }
+}
+
 #[tauri::command]
-fn convert_file(source_path: String, target_path: String, source_font: String) -> Result<(), String> {
+fn convert_file(
+    handle: AppHandle,
+    source_path: String,
+    target_path: String,
+    source_font: String,
+) -> Result<(), String> {
     let source = Path::new(&source_path);
     let target = Path::new(&target_path);
 
@@ -23,36 +57,80 @@ fn convert_file(source_path: String, target_path: String, source_font: String) -
         .unwrap_or("")
         .to_ascii_lowercase();
 
-    match extension.as_str() {
-        "txt" => convert_text_file(source, target).map_err(|e| e.to_string()),
-        "docx" => convert_office_file(source, target, &source_font).map_err(|e| e.to_string()),
-        "xlsx" => convert_xlsx_file(source, target, &source_font).map_err(|e| e.to_string()),
-        "pptx" => convert_office_file(source, target, &source_font).map_err(|e| e.to_string()),
+    log::info!("Starting conversion: {} -> {}", source_path, target_path);
+    log::info!("File extension: {}", extension);
+    log::info!("Source font: {}", source_font);
+
+    let result = match extension.as_str() {
+        "txt" => {
+            emit_progress(&handle, 1, 50, "Reading text file...");
+            convert_text_file(&handle, source, target).map_err(|e| e.to_string())
+        }
+        "docx" => {
+            emit_progress(&handle, 1, 50, "Reading DOCX file...");
+            convert_office_file(&handle, source, target, &source_font, 50).map_err(|e| e.to_string())
+        }
+        "xlsx" => {
+            emit_progress(&handle, 1, 50, "Reading XLSX file...");
+            convert_xlsx_file(&handle, source, target, &source_font, 50).map_err(|e| e.to_string())
+        }
+        "pptx" => {
+            emit_progress(&handle, 1, 50, "Reading PPTX file...");
+            convert_office_file(&handle, source, target, &source_font, 50).map_err(|e| e.to_string())
+        }
         _ => Err("Unsupported file type. Please select txt, docx, xlsx, or pptx.".to_string()),
+    };
+
+    if result.is_ok() {
+        emit_progress(&handle, 50, 50, "Conversion completed successfully!");
+        log::info!("Conversion completed successfully");
+    } else {
+        log::error!("Conversion failed");
     }
+
+    result
 }
 
-fn convert_text_file(source: &Path, target: &Path) -> Result<(), Box<dyn std::error::Error>> {
+#[tauri::command]
+fn convert_text(input: String) -> Result<String, String> {
+    Ok(win_to_myanmar3(&input))
+}
+
+fn convert_text_file(handle: &AppHandle, source: &Path, target: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    log::debug!("Reading text file: {:?}", source);
     let content = std::fs::read_to_string(source)?;
+    emit_progress(handle, 25, 50, "Converting text content...");
+
+    log::debug!("Converting content with win_to_myanmar3");
     let converted = win_to_myanmar3(&content);
+
+    emit_progress(handle, 45, 50, "Writing converted file...");
+    log::debug!("Writing converted file to: {:?}", target);
     std::fs::write(target, converted)?;
     Ok(())
 }
 
-fn convert_office_file(source: &Path, target: &Path, source_font: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn convert_office_file(handle: &AppHandle, source: &Path, target: &Path, source_font: &str, total_steps: usize) -> Result<(), Box<dyn std::error::Error>> {
     use zip::write::FileOptions;
     use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+    log::debug!("Opening office file: {:?}", source);
     let source_file = File::open(source)?;
     let mut archive = ZipArchive::new(source_file)?;
+
+    let total_files = archive.len();
+    log::debug!("Total files in archive: {}", total_files);
 
     let target_file = File::create(target)?;
     let mut writer = ZipWriter::new(target_file);
     let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
     for i in 0..archive.len() {
+        let progress = 3 + (i * 40 / total_files.max(1));
+        emit_progress(handle, progress, total_steps, &format!("Processing file {}/{}", i + 1, total_files));
         let mut file = archive.by_index(i)?;
         let name = file.name().to_string();
+        log::trace!("Processing archive entry: {}", name);
 
         if file.is_dir() {
             writer.add_directory(name, options)?;
@@ -63,9 +141,11 @@ fn convert_office_file(source: &Path, target: &Path, source_font: &str) -> Resul
         file.read_to_end(&mut contents)?;
 
         let updated = if name == "word/document.xml" {
-            Some(process_docx_xml(&contents, source_font))
+            log::debug!("Processing DOCX document.xml");
+            Some(process_docx_xml(handle, &contents, source_font, total_steps))
         } else if name.starts_with("ppt/slides/") && name.ends_with(".xml") {
-            Some(process_pptx_slide(&contents, source_font))
+            log::debug!("Processing PPTX slide: {}", name);
+            Some(process_pptx_slide(handle, &contents, source_font, total_steps))
         } else {
             None
         };
@@ -75,19 +155,24 @@ fn convert_office_file(source: &Path, target: &Path, source_font: &str) -> Resul
         writer.write_all(&output_bytes)?;
     }
 
+    emit_progress(handle, 48, 50, "Finalizing office file...");
+    log::debug!("Writing final office file");
     writer.finish()?;
+    emit_progress(handle, 49, 50, "File written successfully");
     Ok(())
 }
 
-fn convert_xlsx_file(source: &Path, target: &Path, source_font: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn convert_xlsx_file(handle: &AppHandle, source: &Path, target: &Path, source_font: &str, _total_steps: usize) -> Result<(), Box<dyn std::error::Error>> {
     use zip::write::FileOptions;
     use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+    log::debug!("Opening XLSX file: {:?}", source);
     let source_file = File::open(source)?;
     let mut archive = ZipArchive::new(source_file)?;
 
     let mut entries: Vec<(String, Vec<u8>, bool)> = Vec::with_capacity(archive.len());
 
+    emit_progress(handle, 3, 50, "Reading XLSX structure...");
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let name = file.name().to_string();
@@ -101,6 +186,7 @@ fn convert_xlsx_file(source: &Path, target: &Path, source_font: &str) -> Result<
         entries.push((name, contents, false));
     }
 
+    emit_progress(handle, 10, 50, "Parsing XLSX styles...");
     let styles_xml = entries
         .iter()
         .find(|(name, _, is_dir)| !is_dir && name == "xl/styles.xml")
@@ -108,7 +194,9 @@ fn convert_xlsx_file(source: &Path, target: &Path, source_font: &str) -> Result<
         .unwrap_or_default();
 
     let (source_font_ids, xf_font_ids) = parse_xlsx_styles(&styles_xml, source_font);
+    log::debug!("Found {} source font IDs, {} XF font IDs", source_font_ids.len(), xf_font_ids.len());
 
+    emit_progress(handle, 15, 50, "Analyzing worksheet data...");
     let mut shared_indices: HashSet<usize> = HashSet::new();
 
     for (name, data, is_dir) in &entries {
@@ -116,41 +204,56 @@ fn convert_xlsx_file(source: &Path, target: &Path, source_font: &str) -> Result<
             continue;
         }
         if name.starts_with("xl/worksheets/") && name.ends_with(".xml") {
+            log::trace!("Analyzing worksheet: {}", name);
             collect_shared_string_indices(data, &source_font_ids, &xf_font_ids, &mut shared_indices);
         }
     }
+    log::debug!("Found {} shared string indices to convert", shared_indices.len());
 
+    emit_progress(handle, 20, 50, "Processing shared strings and styles...");
     let target_file = File::create(target)?;
     let mut writer = ZipWriter::new(target_file);
     let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    for (name, data, is_dir) in entries {
+    let entry_count = entries.len();
+    for (idx, (name, data, is_dir)) in entries.into_iter().enumerate() {
         if is_dir {
-            writer.add_directory(name, options)?;
+            writer.add_directory(&name, options)?;
             continue;
         }
 
+        if idx % 3 == 0 {
+            let progress = 20 + ((idx * 25) / entry_count.max(1));
+            emit_progress(handle, progress, 50, &format!("Writing entry {}/{}", idx + 1, entry_count));
+        }
+
         let updated = if name == "xl/sharedStrings.xml" {
+            log::debug!("Processing shared strings XML");
             Some(process_shared_strings(&data, source_font, &shared_indices))
         } else if name == "xl/styles.xml" {
+            log::debug!("Processing styles XML");
             Some(process_xlsx_styles(&data, source_font))
         } else {
             None
         };
 
         let output_bytes = updated.unwrap_or(data);
-        writer.start_file(name, options)?;
+        writer.start_file(&name, options)?;
         writer.write_all(&output_bytes)?;
     }
 
+    emit_progress(handle, 48, 50, "Finalizing XLSX file...");
+    log::debug!("Writing final XLSX file");
     writer.finish()?;
+    emit_progress(handle, 49, 50, "XLSX file written successfully");
     Ok(())
 }
 
-fn process_docx_xml(contents: &[u8], source_font: &str) -> Vec<u8> {
+fn process_docx_xml(handle: &AppHandle, contents: &[u8], source_font: &str, _total_steps: usize) -> Vec<u8> {
     use quick_xml::events::{BytesStart, BytesText, Event};
     use quick_xml::{Reader, Writer};
 
+    log::debug!("Starting DOCX XML processing, size: {} bytes", contents.len());
     let mut reader = Reader::from_reader(contents);
     reader.trim_text(false);
     let mut writer = Writer::new(Vec::with_capacity(contents.len()));
@@ -158,8 +261,23 @@ fn process_docx_xml(contents: &[u8], source_font: &str) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut in_run = false;
     let mut run_has_font = false;
+    let mut event_count = 0usize;
+    let mut last_progress = 0usize;
 
     loop {
+        event_count += 1;
+
+        // Emit progress every 200 events processed (for 2% increments)
+        if event_count % 200 == 0 {
+            let progress = 5 + ((event_count / 200) * 40 / 100);
+            if progress != last_progress && progress <= 45 {
+                emit_progress(handle, progress, 50, &format!("Converting content... ({} nodes processed)", event_count));
+                last_progress = progress;
+            }
+
+            // Allow other events to process
+            std::thread::yield_now();
+        }
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let elem = e.into_owned();
@@ -247,6 +365,9 @@ fn process_docx_xml(contents: &[u8], source_font: &str) -> Vec<u8> {
         }
         buf.clear();
     }
+
+    log::debug!("DOCX XML processing completed, {} events processed", event_count);
+    emit_progress(handle, 46, 50, "Document content processed");
 
     writer.into_inner()
 }
@@ -628,10 +749,11 @@ fn collect_shared_string_indices(
     }
 }
 
-fn process_pptx_slide(contents: &[u8], source_font: &str) -> Vec<u8> {
+fn process_pptx_slide(handle: &AppHandle, contents: &[u8], source_font: &str, _total_steps: usize) -> Vec<u8> {
     use quick_xml::events::{BytesStart, BytesText, Event};
     use quick_xml::{Reader, Writer};
 
+    log::debug!("Starting PPTX slide XML processing, size: {} bytes", contents.len());
     let mut reader = Reader::from_reader(contents);
     reader.trim_text(false);
     let mut writer = Writer::new(Vec::with_capacity(contents.len()));
@@ -639,6 +761,8 @@ fn process_pptx_slide(contents: &[u8], source_font: &str) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut in_run = false;
     let mut run_has_font = false;
+    let mut event_count = 0usize;
+    let mut last_progress = 0usize;
 
     fn tag_matches(name: &[u8], local: &[u8]) -> bool {
         if name == local {
@@ -652,6 +776,19 @@ fn process_pptx_slide(contents: &[u8], source_font: &str) -> Vec<u8> {
     }
 
     loop {
+        event_count += 1;
+
+        // Emit progress every 200 events processed (for 2% increments)
+        if event_count % 200 == 0 {
+            let progress = 5 + ((event_count / 200) * 40 / 100);
+            if progress != last_progress && progress <= 45 {
+                emit_progress(handle, progress, 50, &format!("Converting slide content... ({} nodes processed)", event_count));
+                last_progress = progress;
+            }
+
+            // Allow other events to process
+            std::thread::yield_now();
+        }
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let elem = e.into_owned();
@@ -757,6 +894,9 @@ fn process_pptx_slide(contents: &[u8], source_font: &str) -> Vec<u8> {
         buf.clear();
     }
 
+    log::debug!("PPTX slide XML processing completed, {} events processed", event_count);
+    emit_progress(handle, 46, 50, "Slide content processed");
+
     writer.into_inner()
 }
 
@@ -766,7 +906,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![convert_file])
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Debug)
+                .build(),
+        )
+        .invoke_handler(tauri::generate_handler![convert_file, convert_text])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

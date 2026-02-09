@@ -39,6 +39,12 @@ body {
   gap: 24px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.24em;
@@ -103,6 +109,25 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(194, 105, 61, 0.15);
 }
 
+textarea {
+  border-radius: 16px;
+  border: 1px solid #d5d1c7;
+  padding: 14px 16px;
+  font-size: 1rem;
+  min-height: 220px;
+  resize: vertical;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+  background: #fbfaf7;
+  color: #1b1e24;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #c2693d;
+  box-shadow: 0 0 0 3px rgba(194, 105, 61, 0.15);
+}
+
 .file-row {
   display: flex;
   align-items: center;
@@ -151,6 +176,13 @@ button.secondary {
   box-shadow: none;
 }
 
+button.ghost {
+  background: transparent;
+  color: #1b1e24;
+  border: 1px solid #d5d1c7;
+  box-shadow: none;
+}
+
 button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
@@ -165,6 +197,68 @@ button:disabled {
   margin: 0;
   font-size: 0.95rem;
   color: #1b1e24;
+}
+
+.text-panel {
+  max-width: 980px;
+}
+
+.text-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.text-status {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Progress bar styles */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 24px;
+  background: #f6f1e8;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #c2693d, #8b3f2b);
+  transition: width 0.3s ease;
+  border-radius: 12px;
+}
+
+.progress-percentage {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1b1e24;
+  min-width: 50px;
+  text-align: right;
+}
+
+.progress-message {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a7f88;
+  font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
 }
 
 @media (max-width: 720px) {
@@ -183,5 +277,9 @@ button:disabled {
 
   button {
     width: 100%;
+  }
+
+  .text-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -23,6 +23,7 @@ const FONT_MAPPING_ENTRIES: &[(&str, &str)] = &[
     (">", "\u{103C}\u{103D}"),
     ("\u{00EA}", "\u{103C}\u{102F}"),
     ("\u{00FB}", "\u{103C}\u{102F}"),
+    ("Bu", "\u{1000}\u{103C}"),
     ("T", "\u{103D}\u{103D}\u{103E}"),
     ("I", "\u{103E}\u{102F}"),
     ("\u{00AA}", "\u{103E}\u{1030}"),
@@ -43,9 +44,6 @@ const FONT_MAPPING_ENTRIES: &[(&str, &str)] = &[
     ("\u{00BF}", "?"),
     ("\u{00B5}", "!"),
     ("\u{03BC}", "!"),
-    ("\u{00AB}", "["),
-    ("\u{00BB}", "]"),
-    ("\u{00E7}", ","),
     ("$", "\u{1000}\u{1019}\u{1015}\u{103A}"),
     ("_", "*"),
     ("\u{0192}", "\u{1041}\u{2044}\u{1042}"),
@@ -390,9 +388,39 @@ fn replace_zero_wa(input: &str) -> String {
     out
 }
 
+fn cleanup_before_convert(input: &str) -> String {
+    let mut result = input.to_string();
+    let replacements = [
+        (" f", "f"),
+        (" m", "m"),
+        ("  ;", ";"),
+        ("a ", "a"),
+        (" D", "D"),
+        (" d", "d"),
+        (" F", "F"),
+        (" S", "S"),
+    ];
+    for (from, to) in replacements {
+        result = result.replace(from, to);
+    }
+    result
+}
+
+fn cleanup_after_convert(input: &str) -> String {
+    let mut result = input.to_string();
+    let replacements = [("«", "["), ("»", "]"), ("ç", ",")];
+    for (from, to) in replacements {
+        result = result.replace(from, to);
+    }
+    result
+}
+
 pub fn win_to_myanmar3(input: &str) -> String {
+    // Cleanup before font mapping
+    let cleaned = cleanup_before_convert(input);
+
     // Apply font mapping
-    let mut unistr = apply_font_mapping(input);
+    let mut unistr = apply_font_mapping(&cleaned);
 
     // Reordering kinzi
     let con_pattern = "(?:u|c|\\*|C|i|p|q|Z|n|\u{00F1}|\u{00CD}|\u{00DA}|#|X|!|\u{00A1}|P|w|x|'|\"|e|E|\u{00BD}|y|z|A|b|r|,|&|v|0|o|\\[|V|t|\\||\u{00F3})";
@@ -421,11 +449,12 @@ pub fn win_to_myanmar3(input: &str) -> String {
     let re = Regex::new("(?P<E>\u{1031})?(?P<con>[\u{1000}-\u{1021}])(?P<scon>\u{1039}[\u{1000}-\u{1021}])?(?P<upper>[\u{102D}\u{102E}\u{1032}\u{1036}])?(?P<DVs>[\u{1037}\u{1038}]){0,2}(?P<M>[\u{103B}-\u{103E}]*)(?P<lower>[\u{102F}\u{1030}])?(?P<upper2>[\u{102D}\u{102E}\u{1032}])?")
         .unwrap();
     unistr = re
-        .replace_all(&unistr, "${con}${scon}${M}${E}${upper}${lower}${DVs}")
+        .replace_all(&unistr, "${con}${scon}${M}${E}${upper}${lower}${DVs}${upper2}")
         .to_string();
 
     // Apply corrections
     unistr = correction1(&unistr);
 
-    unistr
+    // Cleanup after conversion (avoid conflicts during Win Innwa mapping)
+    cleanup_after_convert(&unistr)
 }
