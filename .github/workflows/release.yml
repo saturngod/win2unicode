@@ -18,9 +18,6 @@ jobs:
           - name: Windows MSI
             os: windows-latest
             bundles: "--bundles msi"
-          - name: macOS Intel DMG
-            os: macos-12
-            bundles: "--bundles dmg"
           - name: macOS Apple Silicon DMG
             os: macos-14
             bundles: "--bundles dmg"
